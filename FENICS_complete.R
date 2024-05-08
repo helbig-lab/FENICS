@@ -3,6 +3,7 @@ shelf(readxl, Hmisc, tidyverse, ontologyIndex, magrittr, ggrepel, quiet=T)
 
 # Tree Setup ----
 ## OBO to Is_A and Ancs ----
+###ontology can be downloaded at bioportal.bioontology.org/ontologies/fenics 
 raw_tree <- get_OBO("fenics_v8.obo", extract_tags="everything")
 fenics_ids <- tibble(raw_id = raw_tree$id,
                      fenics_id = sapply(raw_tree$property_value,
