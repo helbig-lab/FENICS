@@ -2,8 +2,11 @@ library(librarian)
 shelf(readxl, Hmisc, tidyverse, ontologyIndex, magrittr, ggrepel, quiet=T)
 
 # Tree Setup ----
-## OBO to Is_A and Ancs ----
-###ontology can be downloaded at bioportal.bioontology.org/ontologies/fenics 
+## Downstream analysis depends on processing the raw ontology (OBO file)
+## Here, we generate several helpful dictionaries and tables from the OBO
+## FENICS OBO can be downloaded at bioportal.bioontology.org/ontologies/fenics
+
+## Read OBO  
 raw_tree <- get_OBO("fenics_v8.obo", extract_tags="everything")
 fenics_ids <- tibble(raw_id = raw_tree$id,
                      fenics_id = sapply(raw_tree$property_value,
@@ -22,6 +25,8 @@ for (i in c("id", "parents", "children", "ancestors")) {
 raw_tibble <- tibble(term.id=raw_tree$id, term=raw_tree$name, parents=raw_tree$parents,
                      ancestors=raw_tree$ancestors, children=raw_tree$children) %>%
   filter(term.id != "NA")
+
+## Generate useful dictionaries 
 isa <- raw_tibble %>% select(term.id, term, is.a=parents) %>%
   separate_rows(is.a, sep=";")
 def <- raw_tibble %>% select(term.id, term) %>% unique()
@@ -53,10 +58,33 @@ params <- def %>%
   select(term.id, term=def, parameter)
 
 # Analysis ----
+## Contents:
+## Descriptive Stats 
+### We process the basic annotation from Table S1 to generate...
+### ... a more complete annotation via automated reasoning ... 
+### ... necessary for downstream tasks for the sodium channels. 
+### Descriptive statistics recorded in the manuscript are also computed here
+### Lastly, a lolliplot is generated for sodium channel variants 
+## Heatmap and radar
+### Analysis used in generation of Figure 2 and associated plots
+## ClinGen Calibrations
+### Iterative computation of positive local likelihood ratios ... 
+### ... for multiple parameters for SCN1A/2A/3A/8A and then KCNQ2. 
+### Figures 3 and 4 are generated using modifications from the ... 
+### ... basic plotting structures demonstrated following the calibration. 
+## Structure-Function Associations 
+### For the sodium channels, we test whether FENICS annotations ... 
+### ... are associated with particular channel structural features. 
+### We use Fisher's exact test with FDR correction to 10% 
+### We also plot these associations along the channel as in Figure 6
+## SCN2A Projection 
+### We project variant data to a published cohort of individuals ... 
+### with SCN2A-related disorders; descriptive statistics are computed 
+
 ## Descriptive Stats ----
-###PER Dictionary = paralogous mapping for SCN1A/2A/3A/8A ... 
-###... obtained from Perez-Palma et al., 2020 (31871067) ...
-###... expanded to 3 columns: index, gene, position 
+### PER Dictionary = paralogous mapping for SCN1A/2A/3A/8A ... 
+### ... obtained from Perez-Palma et al., 2020 (31871067) ...
+### ... expanded to 3 columns: index, gene, position 
 per <- read_csv("per_dict.csv")
 raw <- read_csv("Parthasarathy2024_AJHG_Table_S1.csv") %>% 
   filter(grepl("SCN", gene)) %>% 
@@ -120,9 +148,9 @@ prop %>% filter(variant %nin% ps3_app$variant) %>%
   filter(!grepl("Normal",term), !grepl(" normal",term)) %>%
   count(term) %>% arrange(-n) 
 
-###Structural features of sodium channels obtained from UniProt ... 
-###... with columns domain (I-IV), segment (1-6), name (e.g., I1 or III5), 
-###... start and end based on SCN1A, to be then mapped to paralogous indices
+### Structural features of sodium channels obtained from UniProt ... 
+### ... with columns domain (I-IV), segment (1-6), name (e.g., I1 or III5), 
+### ... start and end based on SCN1A, to be then mapped to paralogous indices
 regions <- read_csv("fenics_nav_topo.csv")
 lollin <- prop %>% select(expID, gene, variant) %>%
   mutate(position = as.numeric(str_extract(variant, "\\d+"))) %>%
@@ -213,15 +241,15 @@ lapply(c("GoF","LoF","Mix"), function(i) {
 })
 
 ## ClinGen Calibration ----
-###Nested functions
-###Requires table with column names: gene, variant, variant_class, ...
-###... parameter, mean_adj ...
-###... where variant_class is 'benign' or 'pathogenic' and ...
-###... mean_adj is mean deviation from WT, adjusted to be compatible ...
-###... i.e., ensuring peak current is scaled so that 0 = absent and 1 = WT ...
-###... and that V1/2 values are taken as absolute value of deviation. 
-###Output: list where entry 1 is final table of thresholds, and ... 
-###... entry 2 records the computations in detail. 
+### Nested functions
+### Requires table with column names: gene, variant, variant_class, ...
+### ... parameter, mean_adj ...
+### ... where variant_class is 'benign' or 'pathogenic' and ...
+### ... mean_adj is mean deviation from WT, adjusted to be compatible ...
+### ... i.e., ensuring peak current is scaled so that 0 = absent and 1 = WT ...
+### ... and that V1/2 values are taken as absolute value of deviation. 
+### Output: list where entry 1 is final table of thresholds, and ... 
+### ... entry 2 records the computations in detail. 
 comp_lrs <- function(ctrl) {
   func_lrs_maxs <- tibble(variant_class=c("benign","pathogenic"), dir="more",threshold=-1000)
   func_lrs_result_new <- tibble()
@@ -300,17 +328,17 @@ lr_from_thres <- function(thres, dir, ctrl_param) {
                 FP=fp, TN=tn, LR=lrp1))
 }
 
-###scn_raw table can be obtained by combining ...
-###... pathogenic control data from from our Table S2 ...
-###... with as yet unpublished benign control data. 
+### scn_raw table can be obtained by combining ...
+### ... pathogenic control data from from our Table S2 ...
+### ... with as yet unpublished benign control data. 
 scn_raw <- read_csv("scn_fxn_ctrl_all.csv")
 scn_thresh <- comp_lrs(scn_raw) 
 
-###kcn_raw table modified from published data 
-###Supplemental Tables 4 and 5 from Vanoye et al., 2022 (35104249)
-###We use an 'assay' column to distinguish 'het', i.e., heterozygous ...
-###... from 'hom', i.e., homozygous experimental conditions
-###A quick lolliplot precedes calibration as above
+### kcn_raw table modified from published data 
+### Supplemental Tables 4 and 5 from Vanoye et al., 2022 (35104249)
+### We use an 'assay' column to distinguish 'het', i.e., heterozygous ...
+### ... from 'hom', i.e., homozygous experimental conditions
+### A quick lolliplot precedes calibration as above
 kcn_raw <- read_csv("kcnq2_fxn_ctrl_all.csv")
 kcn_regions <- tribble(
   ~segments, ~start, ~end,
@@ -348,7 +376,7 @@ plot
 kcn_het_thresh <- comp_lrs(kcn_raw %>% filter(assay == "het"))
 kcn_hom_thresh <- comp_lrs(kcn_raw %>% filter(assay == "hom"))
 
-###Plots used in Figures 3 and 4 are built using these frameworks
+### Plots used in Figures 3 and 4 are built using these frameworks
 kcn_hom_thresh %>%
   filter(param=="Current Density", dir=="less", threshold>=0) %>%
   ggplot(aes(x=100*threshold,y=LR)) +
@@ -362,10 +390,10 @@ kcn_hom_thresh %>%
   scale_x_continuous(expand=c(0,0)) +
   theme_classic()
 
-###All dots visualizations are built by iterating the contents ...
-###... of the comp_lrs and lr_param function to obtain ctrl_param ...
-###... which is a table of control values for a single parameter ...
-###... for a single iteration of the analysis. 
+### All dots visualizations are built by iterating the contents ...
+### ... of the comp_lrs and lr_param function to obtain ctrl_param ...
+### ... which is a table of control values for a single parameter ...
+### ... for a single iteration of the analysis. 
 ctrl_param %>% 
   ggplot(aes(x=0, y=mean_adj)) +
   geom_rect(xmin=-.75, xmax=.75, ymin=0, ymax = 27, fill="white", color="black") +
@@ -379,7 +407,7 @@ ctrl_param %>%
   theme(text=element_blank(), axis.line=element_blank(), axis.ticks=element_blank(),
         legend.position="none")
 
-###Benign densities in Figure 4 are built with this frame
+### Benign densities in Figure 4 are built with this frame
 hom_begn_v12a <- kcn_raw %>% filter(assay == "hom") %>% 
   filter(parameter=="V1/2 Activation", variant_class=="benign") %>%
   arrange(-mean_adj) %>%
@@ -525,7 +553,9 @@ ggplot(data=seg_assoc_fig, aes(x=.5*(start+end), y=log10(OR_adj))) +
     legend.position = "none")
 
 ## SCN2A Projection ----
-phen <- read_csv("./Documents/SCN2A_full_V16.csv")
+### phen table obtained from Crawford, Xian et al., 2021 (33731876)
+### Supplementary Table 1
+phen <- read_csv("SCN2A_full.csv")
 raw %>% filter(gene=="SCN2A") %>%
   pull(variant) %>% unique() %>% length
 twoa <- raw %>% filter(gene=="SCN2A") %>% pull(variant)
